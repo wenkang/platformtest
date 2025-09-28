@@ -1,0 +1,72 @@
+[
+  {
+    "filename": "platformtest_29-50C.csv",
+    "temperature": 29.50474424794868,
+    "recordedAt": "2025-09-28T13:18:22.469Z"
+  },
+  {
+    "filename": "platformtest_29-60C.csv",
+    "temperature": 29.601190999525564,
+    "recordedAt": "2025-09-28T13:25:58.777Z"
+  },
+  {
+    "filename": "platformtest_29-77C.csv",
+    "temperature": 29.77091805113686,
+    "recordedAt": "2025-09-28T12:49:01.474Z"
+  },
+  {
+    "filename": "platformtest_30-13C.csv",
+    "temperature": 30.13014977569933,
+    "recordedAt": "2025-09-26T11:19:00.436Z"
+  },
+  {
+    "filename": "platformtest_30-49C.csv",
+    "temperature": 30.493230823675795,
+    "recordedAt": "2025-09-26T13:00:31.881Z"
+  },
+  {
+    "filename": "platformtest_30-70C.csv",
+    "temperature": 30.698455075334625,
+    "recordedAt": "2025-09-26T11:43:29.535Z"
+  },
+  {
+    "filename": "platformtest_30-79C.csv",
+    "temperature": 30.788597460499517,
+    "recordedAt": "2025-09-26T12:04:16.683Z"
+  },
+  {
+    "filename": "platformtest_31-01C.csv",
+    "temperature": 31.0054169121495,
+    "recordedAt": "2025-09-26T15:37:45.517Z"
+  },
+  {
+    "filename": "platformtest_31-05C.csv",
+    "temperature": 31.04664167298211,
+    "recordedAt": "2025-09-26T16:09:34.842Z"
+  },
+  {
+    "filename": "platformtest_31-67C.csv",
+    "temperature": 31.667384269943945,
+    "recordedAt": "2025-09-26T17:51:19.513Z"
+  },
+  {
+    "filename": "platformtest_32-03C.csv",
+    "temperature": 32.025451811242995,
+    "recordedAt": "2025-09-26T20:00:47.342Z"
+  },
+  {
+    "filename": "platformtest_33-08C.csv",
+    "temperature": 33.08418117134659,
+    "recordedAt": "2025-09-27T05:53:22.713Z"
+  },
+  {
+    "filename": "platformtest_33-30C.csv",
+    "temperature": 33.29627669899551,
+    "recordedAt": "2025-09-27T13:04:41.946Z"
+  },
+  {
+    "filename": "platformtest_33-88C.csv",
+    "temperature": 33.882694352644464,
+    "recordedAt": "2025-09-27T04:31:36.622Z"
+  }
+]
