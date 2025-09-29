@@ -30,9 +30,14 @@ function results = temperature_compensation_analysis(dataDir, varargin)
 %                               zirconiaLength   -> 22e-3 (22 mm)
 %                               aluminumLength   -> 0.052 (52 mm, adjustable)
 %                             Any unspecified field defaults to zero contribution.
+%     'FitEngine'             Choose 'fitlm' (default) for MATLAB's LinearModel or
+%                             'manual' for an explicit least-squares solve that
+%                             returns the design matrix and coefficient statistics.
 %
 %   The function returns a struct with entries for each laser channel:
-%     results.(channel).model           Fitted LinearModel object
+%     results.(channel).model           Struct containing fitted values, residuals,
+%                                      coefficient table and, for 'fitlm', the
+%                                      original LinearModel in `Extras`
 %     results.(channel).residualStats   Table with RMS and peak residuals (in mm)
 %     results.summary                   Overall table of residual metrics
 %
@@ -50,6 +55,7 @@ addParameter(parser, 'ReferenceTemperature', [], @(x) isempty(x) || isscalar(x))
 addParameter(parser, 'SensorDriftOrder', 2, @(x) isscalar(x) && x >= 0 && round(x) == x);
 addParameter(parser, 'ExpansionCoefficients', struct(), @isstruct);
 addParameter(parser, 'MaterialStack', struct(), @isstruct);
+addParameter(parser, 'FitEngine', 'fitlm', @(s) any(strcmpi(s, {'fitlm', 'manual'})));
 parse(parser, dataDir, varargin{:});
 args = parser.Results;
 
@@ -156,8 +162,7 @@ for idx = 1:numel(laserNames)
         formulaTerms = sprintf('%s + Drift%d', formulaTerms, p);
     end
 
-    mdl = fitlm(tblModel, sprintf('Response ~ %s', formulaTerms), ...
-        'CategoricalVars', 'Level', 'DummyVarCoding', 'full');
+    mdl = fit_full_dummy_model(tblModel, args.FitEngine);
 
     residuals = mdl.Residuals.Raw;
     rmsResidual = sqrt(mean(residuals.^2));
@@ -256,6 +261,83 @@ end
 if nargout == 0
     clear results;
 end
+
+end
+
+function mdl = fit_full_dummy_model(tblModel, engine)
+%FIT_FULL_DUMMY_MODEL  Fit model with full dummy-coded levels using chosen engine.
+engine = lower(engine);
+level = tblModel.Level;
+mechanical = tblModel.Mechanical;
+
+driftVars = setdiff(tblModel.Properties.VariableNames, {'Level', 'Mechanical', 'Response'});
+predictorNames = [{'Mechanical'}, driftVars];
+predictorMatrix = tblModel{:, predictorNames};
+
+categoriesLevel = categories(level);
+numLevels = numel(categoriesLevel);
+numObservations = height(tblModel);
+
+dummyMatrix = zeros(numObservations, numLevels);
+for j = 1:numLevels
+    dummyMatrix(:, j) = (level == categoriesLevel{j});
+end
+
+X = [dummyMatrix, predictorMatrix];
+y = tblModel.Response;
+
+levelNames = strcat('Level_', categoriesLevel(:));
+coefNames = [levelNames; predictorNames(:)];
+
+switch engine
+    case 'fitlm'
+        formulaTerms = '-1 + Level';
+        for k = 1:numel(predictorNames)
+            formulaTerms = sprintf('%s + %s', formulaTerms, predictorNames{k});
+        end
+        lm = fitlm(tblModel, sprintf('Response ~ %s', formulaTerms), ...
+            'CategoricalVars', 'Level', 'DummyVarCoding', 'full');
+
+        coefTable = lm.Coefficients(coefNames, {'Estimate', 'SE', 'tStat', 'pValue', 'Lower', 'Upper'});
+        fitted = lm.Fitted;
+        residuals = lm.Residuals.Raw;
+        dof = lm.DFE;
+        residualStdError = sqrt(lm.MSE);
+        details = lm;
+    case 'manual'
+        beta = X \ y;
+        fitted = X * beta;
+        residuals = y - fitted;
+
+        dof = max(numObservations - size(X, 2), 1);
+        sigma2 = sum(residuals.^2) / dof;
+        XtXInv = pinv(X' * X);
+        stdErr = sqrt(diag(XtXInv) * sigma2);
+        tStat = beta ./ stdErr;
+        pValues = 2 * tcdf(-abs(tStat), dof);
+        ciHalfWidth = tinv(0.975, dof) * stdErr;
+
+        coefTable = table(beta, stdErr, tStat, pValues, beta - ciHalfWidth, beta + ciHalfWidth, ...
+            'VariableNames', {'Estimate', 'SE', 'tStat', 'pValue', 'Lower', 'Upper'}, ...
+            'RowNames', coefNames);
+        residualStdError = sqrt(sigma2);
+        details = struct('NormalMatrixInv', XtXInv);
+    otherwise
+        error('Unsupported FitEngine: %s', engine);
+end
+
+mdl = struct();
+mdl.Engine = engine;
+mdl.CoefficientNames = coefNames;
+mdl.Coefficients = coefTable;
+mdl.DesignMatrix = X;
+mdl.NumObservations = numObservations;
+mdl.DegreesOfFreedom = dof;
+mdl.Fitted = fitted;
+mdl.Residuals = table(residuals, 'VariableNames', {'Raw'});
+mdl.ResidualStdError = residualStdError;
+mdl.Response = y;
+mdl.Extras = details;
 
 end
 

@@ -14,6 +14,7 @@ stack in the measurement path.
    results = temperature_compensation_analysis('.', ...
        'ReferenceTemperature', 31.0, ...
        'SensorDriftOrder', 3, ...
+       'FitEngine', 'manual', ...
        'MaterialStack', struct(
            'aluminumLength', 0.052 ... % customise support length (metres)
        ));
@@ -34,6 +35,12 @@ stack in the measurement path.
    - summarise how each raw laser channel correlates with temperature overall
      and within each `test_level`, so you can see the ~-0.005 mm/°C slopes that
      dominate once the 6 mm and 10 mm baselines are separated.
+
+   Pick `FitEngine` = `'fitlm'` (default) to leverage MATLAB’s `LinearModel`
+   class, or switch to `'manual'` to build the full dummy-coded design matrix
+   explicitly. The manual engine returns the coefficient estimates, standard
+   errors, t-statistics, p-values and 95% confidence bounds along with the raw
+   design matrix so you can inspect every step of the least-squares solution.
 
 3. Inspect `results.summary` for error statistics, review
    `results.temperatureCorrelation` / `results.perLevelTemperature` to confirm
@@ -57,4 +64,11 @@ stack in the measurement path.
   drift (increase `SensorDriftOrder`), or (iii) imperfect thermal equilibrium
   during acquisition. Use the residual plots to diagnose non-linearity or
   hysteresis.
+- When using the manual engine the `results.(channel).model` struct exposes the
+  full design matrix (`DesignMatrix`), dummy-coded level columns, coefficient
+  table and effective degrees of freedom, making it easier to audit how the
+  per-level offsets, mechanical term and sensor-drift polynomials interact.
+  When the MATLAB engine is selected, the original `LinearModel` object is
+  still accessible via `results.(channel).model.Extras` for anyone who prefers
+  MATLAB’s built-in diagnostics.
 
