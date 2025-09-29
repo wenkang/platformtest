@@ -4,8 +4,8 @@
 % 使用 index.json 中的索引依次读取所有 CSV 数据文件，汇总后输出以下
 % 指标：
 %   1. 每个批次(文件)对应的平均激光读值与批次温度。
-%   2. 在每个 test_level 下，激光读值随温度的线性拟合斜率、截距以及
-%      皮尔逊相关系数。
+%   2. 在每个 test_level 下，激光读值随温度的线性拟合斜率、截距、
+%      皮尔逊相关系数以及残差统计量。
 % 脚本执行完毕后将在工作区中生成 `results` 结构体，并打印关键结果。
 
 %% 初始化
@@ -71,9 +71,9 @@ end
 
 %% 计算温度-激光线性拟合及相关系数
 uniqueLevels = unique(allData.test_level);
-fitResults = table('Size', [0, 5], ...
-    'VariableTypes', {'double', 'string', 'double', 'double', 'double'}, ...
-    'VariableNames', {'TestLevel', 'LaserChannel', 'Slope', 'Intercept', 'Correlation'});
+fitResults = table('Size', [0, 7], ...
+    'VariableTypes', {'double', 'string', 'double', 'double', 'double', 'double', 'double'}, ...
+    'VariableNames', {'TestLevel', 'LaserChannel', 'Slope', 'Intercept', 'Correlation', 'ResidualStd', 'RMSE'});
 
 for iLevel = 1:numel(uniqueLevels)
     level = uniqueLevels(iLevel);
@@ -89,10 +89,15 @@ for iLevel = 1:numel(uniqueLevels)
         slope = coeffs(1);
         intercept = coeffs(2);
 
+        predicted = polyval(coeffs, temps);
+        residuals = readings - predicted;
+        residualStd = std(residuals, 0); % 默认使用 n-1 归一化
+        rmse = sqrt(mean(residuals .^ 2));
+
         corrMatrix = corrcoef(temps, readings);
         corrValue = corrMatrix(1, 2);
 
-        newRow = {level, string(varName), slope, intercept, corrValue};
+        newRow = {level, string(varName), slope, intercept, corrValue, residualStd, rmse};
         fitResults = [fitResults; newRow]; %#ok<AGROW>
     end
 end
