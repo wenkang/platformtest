@@ -5,7 +5,8 @@
 % 指标：
 %   1. 每个批次(文件)对应的平均激光读值与批次温度。
 %   2. 在每个 test_level 下，激光读值随温度的线性拟合斜率、截距、
-%      皮尔逊相关系数以及残差统计量。
+%      皮尔逊相关系数以及残差统计量（标准差、RMSE、最小值、最大值）。
+%   3. 生成温度读值增量曲线与温度残差曲线，辅助评估线性模型稳健性。
 % 脚本执行完毕后将在工作区中生成 `results` 结构体，并打印关键结果。
 
 %% 初始化
@@ -71,9 +72,17 @@ end
 
 %% 计算温度-激光线性拟合及相关系数
 uniqueLevels = unique(allData.test_level);
-fitResults = table('Size', [0, 7], ...
-    'VariableTypes', {'double', 'string', 'double', 'double', 'double', 'double', 'double'}, ...
-    'VariableNames', {'TestLevel', 'LaserChannel', 'Slope', 'Intercept', 'Correlation', 'ResidualStd', 'RMSE'});
+fitResults = table('Size', [0, 9], ...
+    'VariableTypes', {'double', 'string', 'double', 'double', 'double', 'double', 'double', 'double', 'double'}, ...
+    'VariableNames', {'TestLevel', 'LaserChannel', 'Slope', 'Intercept', 'Correlation', 'ResidualStd', 'RMSE', 'ResidualMin', 'ResidualMax'});
+
+incrementCurves = table('Size', [0, 6], ...
+    'VariableTypes', {'double', 'string', 'double', 'double', 'double', 'double'}, ...
+    'VariableNames', {'TestLevel', 'LaserChannel', 'BaselineTemperature', 'BaselineReading', 'DeltaTemperature', 'DeltaReading'});
+
+residualCurves = table('Size', [0, 4], ...
+    'VariableTypes', {'double', 'string', 'double', 'double'}, ...
+    'VariableNames', {'TestLevel', 'LaserChannel', 'Temperature', 'Residual'});
 
 for iLevel = 1:numel(uniqueLevels)
     level = uniqueLevels(iLevel);
@@ -93,12 +102,59 @@ for iLevel = 1:numel(uniqueLevels)
         residuals = readings - predicted;
         residualStd = std(residuals, 0); % 默认使用 n-1 归一化
         rmse = sqrt(mean(residuals .^ 2));
+        residualMin = min(residuals);
+        residualMax = max(residuals);
 
         corrMatrix = corrcoef(temps, readings);
         corrValue = corrMatrix(1, 2);
 
-        newRow = {level, string(varName), slope, intercept, corrValue, residualStd, rmse};
+        newRow = {level, string(varName), slope, intercept, corrValue, residualStd, rmse, residualMin, residualMax};
         fitResults = [fitResults; newRow]; %#ok<AGROW>
+
+        % 生成温度读值增量数据
+        [sortedTemps, sortIdx] = sort(temps);
+        sortedReadings = readings(sortIdx);
+        baselineTemp = sortedTemps(1);
+        baselineReading = sortedReadings(1);
+        deltaTemps = sortedTemps - baselineTemp;
+        deltaReadings = sortedReadings - baselineReading;
+
+        incrementTable = table(
+            repmat(level, numel(sortedTemps), 1), ...
+            repmat(string(varName), numel(sortedTemps), 1), ...
+            repmat(baselineTemp, numel(sortedTemps), 1), ...
+            repmat(baselineReading, numel(sortedTemps), 1), ...
+            deltaTemps, ...
+            deltaReadings, ...
+            'VariableNames', incrementCurves.Properties.VariableNames);
+        incrementTable.LaserChannel = string(incrementTable.LaserChannel);
+        incrementCurves = [incrementCurves; incrementTable]; %#ok<AGROW>
+
+        % 绘制温度读值增量曲线
+        figure('Name', sprintf('ΔLaser vs ΔTemperature - Level %.2f - %s', level, varName));
+        plot(deltaTemps, deltaReadings, '-o', 'LineWidth', 1.5);
+        grid on;
+        xlabel('温度增量 (°C)');
+        ylabel('激光读值增量');
+        title(sprintf('温度读值增量曲线 (Level %.2f, %s)', level, varName));
+
+        % 残差曲线数据与绘图
+        sortedResiduals = residuals(sortIdx);
+        residualTable = table(
+            repmat(level, numel(sortedTemps), 1), ...
+            repmat(string(varName), numel(sortedTemps), 1), ...
+            sortedTemps, ...
+            sortedResiduals, ...
+            'VariableNames', residualCurves.Properties.VariableNames);
+        residualTable.LaserChannel = string(residualTable.LaserChannel);
+        residualCurves = [residualCurves; residualTable]; %#ok<AGROW>
+
+        figure('Name', sprintf('Residuals vs Temperature - Level %.2f - %s', level, varName));
+        plot(sortedTemps, sortedResiduals, '-s', 'LineWidth', 1.5);
+        grid on;
+        xlabel('温度 (°C)');
+        ylabel('残差');
+        title(sprintf('温度拟合残差曲线 (Level %.2f, %s)', level, varName));
     end
 end
 
@@ -108,6 +164,8 @@ results.allData = allData;
 results.batchMeans = sortrows(batchMeans, 'BatchTemperature');
 results.temperatureFits = sortrows(fitResults, {'TestLevel', 'LaserChannel'});
 results.laserVariables = laserVars;
+results.incrementCurves = sortrows(incrementCurves, {'TestLevel', 'LaserChannel', 'DeltaTemperature'});
+results.residualCurves = sortrows(residualCurves, {'TestLevel', 'LaserChannel', 'Temperature'});
 
 %% 打印汇总
 fprintf('\n===== 批次平均激光读值 =====\n');
