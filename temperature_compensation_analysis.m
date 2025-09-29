@@ -114,6 +114,21 @@ mechanicalDelta_mm = mechanicalSlope_mm_per_deg .* deltaT;
 
 catLevel = categorical(level);
 
+uniqueLevels = unique(level);
+numFiles = numel(files);
+numRows = height(data);
+temperatureRange = [min(T, [], 'omitnan'), max(T, [], 'omitnan')];
+levelTemperatureTable = groupsummary(table(level, T), 'level', {'mean', 'std'}, 'T');
+
+results = struct();
+results.dataOverview = struct( ...
+    'numFiles', numFiles, ...
+    'numRows', numRows, ...
+    'temperatureMin', temperatureRange(1), ...
+    'temperatureMax', temperatureRange(2), ...
+    'testLevels', uniqueLevels, ...
+    'levelTemperature', levelTemperatureTable);
+
 % Prepare polynomial terms for sensor drift
 polyOrder = args.SensorDriftOrder;
 driftTerms = zeros(height(data), polyOrder);
@@ -121,8 +136,10 @@ for p = 1:polyOrder
     driftTerms(:, p) = deltaT.^p;
 end
 
-results = struct();
-summaryRows = [];
+perLevelVarNames = {'Channel', 'Level_mm', 'TempCorrelation', 'Slope_mm_per_deg', 'MeanReading_mm'};
+summaryRows = cell(0, 3);
+correlationSummaryRows = cell(0, 3);
+perLevelSummaryRows = cell(0, numel(perLevelVarNames));
 
 for idx = 1:numel(laserNames)
     channel = laserNames{idx};
@@ -139,7 +156,8 @@ for idx = 1:numel(laserNames)
         formulaTerms = sprintf('%s + Drift%d', formulaTerms, p);
     end
 
-    mdl = fitlm(tblModel, sprintf('Response ~ %s', formulaTerms));
+    mdl = fitlm(tblModel, sprintf('Response ~ %s', formulaTerms), ...
+        'CategoricalVars', 'Level', 'DummyVarCoding', 'full');
 
     residuals = mdl.Residuals.Raw;
     rmsResidual = sqrt(mean(residuals.^2));
@@ -148,7 +166,44 @@ for idx = 1:numel(laserNames)
     results.(channel).residualStats = table(rmsResidual, peakResidual, ...
         'VariableNames', {'RMS_mm', 'Peak_mm'});
 
-    summaryRows = [summaryRows; {channel, rmsResidual, peakResidual}]; %#ok<AGROW>
+    summaryRows(end+1, :) = {channel, rmsResidual, peakResidual};
+
+    validAll = isfinite(T) & isfinite(y);
+    if sum(validAll) >= 2
+        overallCorrelation = corr(T(validAll), y(validAll));
+        coeffsAll = polyfit(T(validAll), y(validAll), 1);
+        overallSlope = coeffsAll(1);
+    else
+        overallCorrelation = NaN;
+        overallSlope = NaN;
+    end
+
+    levelCorr = nan(numel(uniqueLevels), 1);
+    levelSlope = nan(numel(uniqueLevels), 1);
+    levelMean = nan(numel(uniqueLevels), 1);
+    for lv = 1:numel(uniqueLevels)
+        mask = level == uniqueLevels(lv);
+        validMask = mask & isfinite(T) & isfinite(y);
+        if sum(validMask) >= 2
+            levelCorr(lv) = corr(T(validMask), y(validMask));
+            coeffs = polyfit(T(validMask), y(validMask), 1);
+            levelSlope(lv) = coeffs(1);
+        end
+        levelMean(lv) = mean(y(mask), 'omitnan');
+    end
+
+    perLevelTable = table(uniqueLevels, levelCorr, levelSlope, levelMean, ...
+        'VariableNames', {'Level_mm', 'TempCorrelation', 'Slope_mm_per_deg', 'MeanReading_mm'});
+
+    results.(channel).temperatureAnalysis = struct( ...
+        'overallCorrelation', overallCorrelation, ...
+        'overallSlope_mm_per_deg', overallSlope, ...
+        'perLevel', perLevelTable);
+
+    correlationSummaryRows(end+1, :) = {channel, overallCorrelation, overallSlope};
+
+    channelColumn = repmat({channel}, height(perLevelTable), 1);
+    perLevelSummaryRows = [perLevelSummaryRows; [channelColumn, table2cell(perLevelTable)]]; %#ok<AGROW>
 
     if nargout == 0
         figure('Name', sprintf('Channel %s', channel));
@@ -167,11 +222,36 @@ end
 
 results.summary = cell2table(summaryRows, 'VariableNames', {'Channel', 'RMS_mm', 'Peak_mm'});
 
+if ~isempty(correlationSummaryRows)
+    results.temperatureCorrelation = cell2table(correlationSummaryRows, ...
+        'VariableNames', {'Channel', 'OverallCorrelation', 'OverallSlope_mm_per_deg'});
+end
+
+if ~isempty(perLevelSummaryRows)
+    results.perLevelTemperature = cell2table(perLevelSummaryRows, ...
+        'VariableNames', perLevelVarNames);
+end
+
 fprintf('\nThermal compensation summary (mm):\n');
 disp(results.summary);
 
 fprintf('Reference temperature: %.3f °C\n', Tref);
 fprintf('Assumed mechanical slope: %.4g mm/°C\n', mean(mechanicalSlope_mm_per_deg, 'omitnan'));
+
+fprintf('Data overview: %d rows from %d files spanning %.3f–%.3f °C.\n', ...
+    numRows, numFiles, temperatureRange(1), temperatureRange(2));
+levelLabels = arrayfun(@(x) sprintf('%.0f', x), uniqueLevels, 'UniformOutput', false);
+fprintf('Test levels present: %s mm\n', strjoin(levelLabels, ', '));
+
+if isfield(results, 'temperatureCorrelation')
+    fprintf('\nRaw temperature vs. laser correlation (all levels combined):\n');
+    disp(results.temperatureCorrelation);
+end
+
+if isfield(results, 'perLevelTemperature')
+    fprintf('Per-level temperature slopes (mm/°C):\n');
+    disp(results.perLevelTemperature);
+end
 
 if nargout == 0
     clear results;

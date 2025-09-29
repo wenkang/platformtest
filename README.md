@@ -31,10 +31,16 @@ stack in the measurement path.
      met. Setting the `SensorDriftOrder` to ≥2 allows the optical sensor’s
      thermal drift to deviate from pure linearity while staying monotonic over
      the captured temperature range.
+   - summarise how each raw laser channel correlates with temperature overall
+     and within each `test_level`, so you can see the ~-0.005 mm/°C slopes that
+     dominate once the 6 mm and 10 mm baselines are separated.
 
-3. Inspect `results.summary` for error statistics and, if you call the function
-   without an output argument, review the automatically generated diagnostic
-   plots to look for systematic residual structure.
+3. Inspect `results.summary` for error statistics, review
+   `results.temperatureCorrelation` / `results.perLevelTemperature` to confirm
+   the strength of the within-level temperature trends, check
+   `results.dataOverview` for dataset counts and temperature ranges, and if you
+   call the function without an output argument, review the automatically
+   generated diagnostic plots to look for systematic residual structure.
 
 ## Modelling considerations
 
